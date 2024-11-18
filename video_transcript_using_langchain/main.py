@@ -1,64 +1,49 @@
-import asyncio
-from database.db_operations import load_env_variables, get_db_params, DatabaseManager
-from transcripts.transcript_operations import fetch_transcript, split_into_sentences
-from embeddings_store.embedding_operations import EmbeddingUtils
-from groq_services.chat_operations import ChatWorkflow, count_tokens, truncate_input
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_core.messages import HumanMessage
+from database.config import GROQ_API_KEY, GOOGLE_API_KEY, DB_CONNECTION
+from langchain_groq import ChatGroq
+from transcript.youtue_transcript import fetch_and_save_transcript
+from vectore_store.vectore_store import initialize_vectorstore
+from retreiver.retreiver import create_retriever, create_rag_chain
+from prompts.prompts import get_qa_prompt
+from state_management.state_management import initialize_workflow
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
-async def main():
-    load_env_variables()
-    db_params = get_db_params()
+def main():
+    llm = ChatGroq(model="llama3-8b-8192", temperature=0)
 
-    # Initialize components
-    embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    embedding_utils = EmbeddingUtils(embedding_model) #creating an object of the embedding model
-    db_manager = DatabaseManager(db_params) #Manages PostgreSQL connections and operations and creats an object of the database manager
-    chat_workflow = ChatWorkflow()
+    video_id = input("Give youtube video_id: ")
+    # Fetch and process transcript
+    transcript_file = fetch_and_save_transcript(video_id)
 
-    # Fetch transcript
-    video_id = input("Enter the YouTube video ID: ")
-    transcript = fetch_transcript(video_id)
-    if not transcript:
-        return
+    # Initialize vectorstore
+    vectorstore = initialize_vectorstore(transcript_file, "transcript", DB_CONNECTION)
 
-    # Generate and store embeddings
-    embedding = embedding_utils.generate_transcript_embedding(transcript)
-    await db_manager.store_embedding(video_id, transcript, embedding) # This line stores the embeddings in the database. The database operation is I/O-bound, and using await allows the program to remain responsive while waiting for the database operation to complete.
+    # Create retriever and RAG chain
+    retriever = create_retriever(llm, vectorstore)
+    qa_prompt = get_qa_prompt()
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+    rag_chain = create_rag_chain(retriever, question_answer_chain)
 
-    # Start chat
-    print("\nStart chatting about the video! (type 'exit' to quit)")
+    # Initialize chatbot workflow
+    app = initialize_workflow(rag_chain)
+
+    print("Chatbot initialized. Type 'exit' to stop.")
     while True:
         user_input = input("You: ")
-        if user_input.lower() == 'exit':
-            print("Goodbye!")
+        if user_input.lower() == "exit":
+            print("Exiting...")
             break
 
-        relevant_sections = embedding_utils.find_relevant_section(user_input, transcript)
-        if relevant_sections:
-            relevant_text = " ".join([sent for sent, _ in relevant_sections])
+        # Update the config dictionary to include required keys
+        config = {
+            "configurable": {
+                "thread_id": "abc123",  # Provide a unique thread ID
+                "checkpoint_ns": "your_namespace",  # Provide a namespace if needed
+                "checkpoint_id": "your_checkpoint_id"  # Provide a checkpoint ID if needed
+            }
+        }
 
-            # Check the token count and truncate if necessary
-            if count_tokens(relevant_text) > 5000:  # Adjust the limit as needed
-                relevant_text = truncate_input(relevant_text, max_tokens=5000)
-
-            input_message = HumanMessage(content=relevant_text)
-
-            # Check the token count of the input message before sending
-            if count_tokens(relevant_text) > 5000:
-                print("Message too large, truncating...")
-                relevant_text = truncate_input(relevant_text, max_tokens=5000)
-                input_message = HumanMessage(content=relevant_text)
-
-            # Send the relevant section to the model for processing
-            try:
-                # Assuming you have a function to handle this
-                response = await chat_workflow.process_input(input_message)
-                print("Response:", response)
-            except Exception as e:
-                print("Error processing input:", e)
-        else:
-            print("No relevant sections found.")
+        result = app.invoke({"input": user_input}, config=config)
+        print(f"AI: {result['answer']}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
