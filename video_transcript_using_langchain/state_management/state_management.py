@@ -24,7 +24,7 @@ def call_model(state, rag_chain):
 
 def initialize_workflow(rag_chain):
     """Initializes and returns the workflow."""
-    workflow = StateGraph(state_schema=State)
+    workflow = StateGraph(state_schema=State) 
     workflow.add_edge(START, "model")
     workflow.add_node("model", lambda state: call_model(state, rag_chain))
 

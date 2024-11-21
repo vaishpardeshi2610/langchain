@@ -7,7 +7,7 @@ def initialize_vectorstore(file_path, collection_name, connection):
     """Initializes the vectorstore."""
     # Load documents
     loader = TextLoader(file_path=file_path)
-    docs = loader.load()
+    docs = loader.load() #The load method is called to read the documents from the file, returning a list of document objects.
 
     # Split documents into chunks
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -16,7 +16,7 @@ def initialize_vectorstore(file_path, collection_name, connection):
     # Generate embeddings
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vectorstore = PGVector(
-        embeddings=embeddings,
+        embeddings=embeddings, 
         collection_name=collection_name,
         connection=connection,
         use_jsonb=True,

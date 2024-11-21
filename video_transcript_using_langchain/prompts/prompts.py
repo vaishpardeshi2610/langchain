@@ -3,14 +3,13 @@ from langchain_core.prompts import ChatPromptTemplate
 def get_qa_prompt():
     """Returns the QA prompt template."""
     system_prompt = (
-        "You are an assistant for question-answering tasks. "
-        "Use the following pieces of retrieved context to answer "
-        "the question. If you don't know the answer, say that you "
-        "don't know. Use three sentences maximum and keep the "
-        "answer concise."
-        "\n\n"
-        "{context}"
-    )
+    "You are an assistant for question-answering tasks. Use ONLY the retrieved context below "
+    "to answer the question. Do not use external knowledge or guess. If the context is insufficient, "
+    "respond with 'I don't know.'\n\n"
+    "Retrieved context:\n{context}\n"
+    "Question:"
+)
+
     return ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
